@@ -3,3 +3,5 @@ uvicorn
 line-bot-sdk
 apscheduler
 anthropic
+gspread
+google-auth
