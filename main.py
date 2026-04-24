@@ -116,13 +116,10 @@ def format_vocab(raw, user_id):
     return (
         f"✨ คำศัพท์ประจำวัน\n"
         f"━━━━━━━━━━━━━━\n"
-        f"📖 \n{word}\n"
-        f"━━━━━━━━━━━━━━\n"        
-        f"🇹🇭 \n{data.get('MEANING', '—')}\n"
-        f"━━━━━━━━━━━━━━\n"      
-        f"💬 \n{data.get('EXAMPLE', '—')}\n"
-        f"━━━━━━━━━━━━━━\n"      
-        f"💡 \n{data.get('TIP', '—')}\n"
+        f"📖 - {word}\n"     
+        f"🇹🇭 {data.get('MEANING', '—')}\n"    
+        f"💬 {data.get('EXAMPLE', '—')}\n"  
+        f"💡 {data.get('TIP', '—')}\n"
         f"━━━━━━━━━━━━━━"
     )
 
