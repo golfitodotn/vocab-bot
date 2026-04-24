@@ -94,7 +94,10 @@ def get_vocab_from_ai(category="random", user_id=None):
     except:
         # Gemini error → บอก user
         return (
-            "เหนื่อย ขก หาให้แล้ว"
+            "WORD: ตังหมดรอแปป \n"
+            "MEANING: ตังหมดรอแปป 🫠\n"
+            "EXAMPLE: ตังหมดรอแปป\n"
+            "TIP: ตังหมดรอแปป 💤"
         )
 
 def get_greeting_from_ai():
