@@ -95,8 +95,16 @@ def get_vocab_from_ai(category="random", user_id=None):
         "EXAMPLE: ประโยคสั้นๆ\n"
         "TIP: เทคนิคจำ 1 ประโยค"
     )
-    response = gemini.generate_content(prompt)
-    return response.text
+    try:
+        response = gemini.generate_content(prompt)
+        return response.text
+    except:
+        return (
+            "WORD: —\n"
+            "MEANING: ประเทืองหมดคำจะพูดงับ 🫠\n"
+            "EXAMPLE: ลองพิมพ์ใหม่อีกทีนะงับ\n"
+            "TIP: ประเทืองขอพักก่อนนะงับ 💤"
+        )
 
 def get_greeting_from_ai():
     # Claude Haiku — ใช้แค่ greeting เพราะหวานกว่า Gemini
@@ -112,12 +120,15 @@ def get_greeting_from_ai():
     return response.content[0].text.strip()
 
 def get_chat_reply(text):
-    # Gemini คุยเล่น — ฟรี แต่มี quota 500 ครั้ง/วัน
     try:
         response = gemini.generate_content(
             f"คุณชื่อประเทือง พูดแบ้วๆ ตอบสั้นๆ ไม่เกิน 2 บรรทัด "
             f"กวนตีนนิดหน่อยแต่น่ารัก ลงท้ายด้วย งับ หรือ เยย "
             f"ตอบข้อความนี้เป็นภาษาไทย: {text}"
+        )
+        return response.text.strip()
+    except:
+        return "ประเทืองหมดคำจะพูด -.-"
         )
         return response.text.strip()
     except:
