@@ -3,13 +3,21 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from apscheduler.schedulers.background import BackgroundScheduler
 import anthropic, os, random, gspread
+import google.generativeai as genai
 from google.oauth2.service_account import Credentials
 
 app = FastAPI()
 
+# LINE
 line_bot_api = LineBotApi(os.environ["CHANNEL_ACCESS_TOKEN"])
 handler = WebhookHandler(os.environ["CHANNEL_SECRET"])
+
+# Claude — ใช้แค่ greeting (เสียตังน้อยมาก)
 claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+# Gemini — ใช้สร้างคำศัพท์ (ฟรี 100%)
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+gemini = genai.GenerativeModel("gemini-1.5-flash")
 
 # ===== GOOGLE SHEETS =====
 def get_sheet():
@@ -54,9 +62,9 @@ SLEEPING_REPLIES = [
 
 # ===== AI FUNCTIONS =====
 def get_vocab_from_ai(category="random", user_id=None):
+    # ใช้ Gemini — ฟรี 100%
     used_words, _ = get_user_data(user_id) if user_id else ([], 0)
-    # ส่ง 100 คำล่าสุด เพื่อป้องกันซ้ำ แต่ไม่ให้ prompt ยาวเกิน
-    used_text = ", ".join(used_words[-500:]) if used_words else "ยังไม่มี"
+    used_text = ", ".join(used_words) if used_words else "ยังไม่มี"
 
     if category == "economics":
         topic = (
@@ -70,29 +78,27 @@ def get_vocab_from_ai(category="random", user_id=None):
             "เช่น negotiation, delegation, stakeholder, productivity"
         )
     else:
-        # random สุ่มระหว่าง econ และ work
         return get_vocab_from_ai(random.choice(["economics", "workplace"]), user_id)
 
-    response = claude.messages.create(
-        # Haiku = ถูกกว่า Opus 10x เพียงพอสำหรับสร้างคำศัพท์
-        model="claude-haiku-4-5-20251001",
-        max_tokens=250,  # จำกัด token = ประหยัด
-        messages=[{"role": "user", "content": (
-            f"สร้างคำศัพท์ภาษาอังกฤษ 1 คำ หมวด: {topic}\n"
-            f"ห้ามใช้คำเหล่านี้: {used_text}\n"
-            "ตอบแค่นี้เท่านั้น:\n"
-            "WORD: คำ\n"
-            "MEANING: ความหมายไทย\n"
-            "EXAMPLE: ประโยคสั้นๆ\n"
-            "TIP: เทคนิคจำ 1 ประโยค"
-        )}]
+    prompt = (
+        f"สร้างคำศัพท์ภาษาอังกฤษ 1 คำ หมวด: {topic}\n"
+        f"ห้ามใช้คำเหล่านี้: {used_text}\n"
+        "ตอบแค่นี้เท่านั้น ห้ามเพิ่มอะไรนอกจากนี้:\n"
+        "WORD: คำ\n"
+        "MEANING: ความหมายไทย\n"
+        "EXAMPLE: ประโยคสั้นๆ\n"
+        "TIP: เทคนิคจำ 1 ประโยค"
     )
-    return response.content[0].text
+    # Gemini ฟรี ใช้สร้างคำศัพท์
+    response = gemini.generate_content(prompt)
+    return response.text
 
 def get_greeting_from_ai():
+    # Claude Haiku ใช้ greeting เพราะหวานกว่า Gemini
+    # เสียแค่ $0.0001/ครั้ง = ถูกมาก
     response = claude.messages.create(
-        model="claude-haiku-4-5-20251001",  # Haiku เพียงพอสำหรับทักทาย
-        max_tokens=80,  # ข้อความสั้น max_tokens น้อย = ประหยัด
+        model="claude-haiku-4-5-20251001",
+        max_tokens=80,
         messages=[{"role": "user", "content": (
             "ทักทายตอนเช้าแบบแฟนทักแฟน ภาษาไทย หวานๆ ไม่เกิน 2 บรรทัด "
             "ห้ามใช้ชื่อ emoji ได้ 1 ตัว ให้ต่างกันทุกวัน "
@@ -102,7 +108,7 @@ def get_greeting_from_ai():
     return response.content[0].text.strip()
 
 def format_vocab(raw, user_id):
-    # แปลง text จาก Claude → Dictionary แล้วจัดหน้าตาให้อ่านง่าย
+    # แปลง text จาก AI → Dictionary แล้วจัดหน้าตาให้อ่านง่าย
     data = {}
     for line in raw.strip().split("\n"):
         if ": " in line:
@@ -130,8 +136,7 @@ def send_daily_vocab():
         return
     greeting = get_greeting_from_ai()
     for uid in uids:
-        # work 80% econ 20% โดยใช้ random.choices
-        # weights=[80, 20] = สัดส่วนที่ต้องการ
+        # work 80% econ 20%
         category = random.choices(
             ["workplace", "economics"],
             weights=[80, 20]
@@ -158,10 +163,9 @@ def send_reminder():
         )
         line_bot_api.push_message(uid, TextSendMessage(text=msg))
 
-# cron = ทำงานตามเวลาที่กำหนด
 scheduler = BackgroundScheduler(timezone="Asia/Bangkok")
-scheduler.add_job(send_daily_vocab, "cron", hour=7, minute=0)   # ทุกเช้า 7:00
-scheduler.add_job(send_reminder, "cron", hour=21, minute=0)     # ทุกคืน 3 ทุ่ม
+scheduler.add_job(send_daily_vocab, "cron", hour=7, minute=0)
+scheduler.add_job(send_reminder, "cron", hour=21, minute=0)
 scheduler.start()
 
 # ===== WEBHOOK =====
@@ -178,7 +182,7 @@ def handle_message(event):
     text = event.message.text.strip().lower()
 
     if text in ["คำศัพท์", "vocab", "word", "ขอคำศัพท์"]:
-        # สุ่ม 50/50 เมื่อขอเอง
+        # Gemini สร้างคำศัพท์ — ฟรี
         reply = format_vocab(get_vocab_from_ai("random", uid), uid)
 
     elif text == "econ":
