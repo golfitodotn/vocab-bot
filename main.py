@@ -69,13 +69,13 @@ def get_vocab_from_ai(category="random", user_id=None):
     if category == "economics":
         topic = (
             "เศรษฐศาสตร์ระดับ intermediate-advanced "
-            "เช่น monetary policy, fiscal policy, GDP, inflation, elasticity "
-            "เหมาะเตรียม ป.โท economics"
+            "เช่น financial, monetary policy, fiscal policy, GDP, inflation, elasticity "
+            "เหมาะกับ ป.โท economics"
         )
     elif category == "workplace":
         topic = (
             "การทำงานระดับ intermediate-advanced "
-            "เช่น negotiation, delegation, stakeholder, productivity"
+            "เช่น office, negotiation, delegation, stakeholder, productivity"
         )
     else:
         return get_vocab_from_ai(random.choice(["economics", "workplace"]), user_id)
