@@ -17,7 +17,7 @@ claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 # Gemini — ใช้สร้างคำศัพท์ (ฟรี 100%)
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-gemini = genai.GenerativeModel("gemini-2.5-flash-lite-preview-06-17")
+gemini = genai.GenerativeModel("gemini-2.5-flash")
 
 # ===== GOOGLE SHEETS =====
 def get_sheet():
