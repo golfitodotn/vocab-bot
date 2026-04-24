@@ -75,12 +75,37 @@ async def webhook(request: Request):
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    """รับข้อความจาก LINE — ส่ง User ID กลับ"""
     uid = event.source.user_id
+    text = event.message.text.strip().lower()
+
+    if text in ["คำศัพท์", "vocab", "ขอคำศัพท์", "word"]:
+        raw = get_vocab_from_ai()
+        data = {}
+        for line in raw.strip().split("\n"):
+            if ": " in line:
+                key, val = line.split(": ", 1)
+                data[key.strip()] = val.strip()
+        msg = (
+            f"✨ คำศัพท์วันนี้\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"📖  {data.get('WORD','—')}\n"
+            f"🇹🇭  {data.get('MEANING','—')}\n"
+            f"💬  \"{data.get('EXAMPLE','—')}\"\n"
+            f"💡  {data.get('TIP','—')}\n"
+            f"━━━━━━━━━━━━━━"
+        )
+    else:
+        msg = (
+            f"👋 สวัสดีครับ!\n\n"
+            f"พิมพ์ได้เลยครับ:\n"
+            f"• 'คำศัพท์' — ขอคำศัพท์ใหม่\n"
+            f"• 'vocab' — ขอคำศัพท์ใหม่\n\n"
+            f"หรือรอรับอัตโนมัติทุกเช้า 7:00 น. 🌅"
+        )
+
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text=f"✅ Bot พร้อมแล้ว!\nUser ID ของคุณ:\n{uid}")
-    )
+        TextSendM
 
 
 @app.get("/")
