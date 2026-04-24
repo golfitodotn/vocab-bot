@@ -20,19 +20,22 @@ SLEEPING_REPLIES = [
     "หยุดพิมพ์แล้วไปท่องคำศัพท์เถอะ 😤",
 ]
 
-def get_vocab_from_ai():
-    category = random.choice(["economics", "workplace"])
+def get_vocab_from_ai(category="random"):
     if category == "economics":
         topic = (
-            "คำศัพท์ภาษาอังกฤษด้านเศรษฐศาสตร์ระดับ graduate "
+            "คำศัพท์ภาษาอังกฤษด้านเศรษฐศาสตร์ระดับ intermediate ขึ้นไป "
             "เช่น macroeconomics, monetary policy, fiscal policy, GDP, inflation "
             "เหมาะสำหรับเตรียมสอบ ป.โท economics"
         )
-    else:
+    elif category == "workplace":
         topic = (
-            "คำศัพท์ภาษาอังกฤษที่ใช้ในที่ทำงานระดับ intermediate-advanced "
+            "คำศัพท์ภาษาอังกฤษที่ใช้ในที่ทำงานระดับ intermediate ขึ้นไป "
             "เช่น professional communication, business, management"
         )
+    else:
+        chosen = random.choice(["economics", "workplace"])
+        return get_vocab_from_ai(chosen)
+
     response = claude.messages.create(
         model="claude-opus-4-5",
         max_tokens=300,
@@ -90,8 +93,21 @@ def send_daily_vocab():
     for uid in uids:
         line_bot_api.push_message(uid, TextSendMessage(text=msg))
 
+def send_reminder():
+    uids = []
+    if os.environ.get("MY_USER_ID"):
+        uids.append(os.environ.get("MY_USER_ID"))
+    if os.environ.get("FRIEND_USER_ID"):
+        uids.append(os.environ.get("FRIEND_USER_ID"))
+    if not uids:
+        return
+    msg = "อย่าลืมทวนศัพท์นะ 📚\nแล้วก็เลิกเล่น TikTok ได้แล้ว ประเทืองแสบตา 👁️"
+    for uid in uids:
+        line_bot_api.push_message(uid, TextSendMessage(text=msg))
+
 scheduler = BackgroundScheduler(timezone="Asia/Bangkok")
 scheduler.add_job(send_daily_vocab, "cron", hour=7, minute=0)
+scheduler.add_job(send_reminder, "cron", hour=21, minute=0)
 scheduler.start()
 
 @app.post("/webhook")
@@ -104,12 +120,22 @@ async def webhook(request: Request):
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.strip().lower()
+
     if text in ["คำศัพท์", "vocab", "word", "ขอคำศัพท์"]:
-        reply = format_vocab(get_vocab_from_ai())
+        reply = format_vocab(get_vocab_from_ai("random"))
+
+    elif text == "econ":
+        reply = format_vocab(get_vocab_from_ai("economics"))
+
+    elif text == "work":
+        reply = format_vocab(get_vocab_from_ai("workplace"))
+
     elif text == "myid":
         reply = f"User ID ของคุณ:\n{event.source.user_id}"
+
     else:
         reply = random.choice(SLEEPING_REPLIES)
+
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
 @app.get("/")
