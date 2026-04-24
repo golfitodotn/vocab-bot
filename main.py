@@ -12,10 +12,10 @@ app = FastAPI()
 line_bot_api = LineBotApi(os.environ["CHANNEL_ACCESS_TOKEN"])
 handler = WebhookHandler(os.environ["CHANNEL_SECRET"])
 
-# Claude — ใช้แค่ greeting (เสียตังน้อยมาก)
+# Claude — ใช้แค่ greeting อย่างเดียว เสียตังน้อยมาก
 claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
-# Gemini — ใช้สร้างคำศัพท์ (ฟรี 100%)
+# Gemini — ใช้สร้างคำศัพท์ + คุยเล่น ฟรี
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 gemini = genai.GenerativeModel("gemini-2.5-flash")
 
@@ -44,13 +44,13 @@ def get_user_data(user_id):
         return [], 0
 
 def save_word(word, user_id):
-    # บันทึกคำใหม่ลง Google Sheets เพื่อป้องกันซ้ำ
+    # บันทึกคำใหม่เพื่อป้องกันซ้ำ
     try:
         get_sheet().append_row([word, user_id])
     except:
         pass
 
-# ===== ข้อความสุ่มตอบ — ไม่เรียก AI = ฟรี =====
+# ===== ข้อความ auto สำรอง — ไม่เรียก AI = ฟรี =====
 SLEEPING_REPLIES = [
     "ประเทืองหลับอยู่งับ 😴 พิมพ์ help ดูคำสั่งได้เลยงับ",
     "ไม่ว่างงับ ไปท่องศัพท์ก่อนเลยงับ 🙄",
@@ -62,20 +62,26 @@ SLEEPING_REPLIES = [
 
 # ===== AI FUNCTIONS =====
 def get_vocab_from_ai(category="random", user_id=None):
-    # ใช้ Gemini — ฟรี 100%
+    # ใช้ Gemini — ฟรี
     used_words, _ = get_user_data(user_id) if user_id else ([], 0)
     used_text = ", ".join(used_words) if used_words else "ยังไม่มี"
 
     if category == "economics":
         topic = (
-            "เศรษฐศาสตร์ระดับ intermediate-advanced "
-            "เช่น financial, monetary policy, fiscal policy, GDP, inflation, elasticity "
-            "เหมาะกับ ป.โท economics"
+            "เศรษฐศาสตร์และการเงินระดับ intermediate-advanced "
+            "เช่น monetary policy, fiscal policy, GDP, inflation, elasticity, "
+            "derivatives, portfolio, liquidity, hedge fund, yield curve, "
+            "quantitative easing, asset allocation "
+            "เหมาะเตรียม ป.โท economics และงานด้านการเงิน"
         )
     elif category == "workplace":
         topic = (
-            "การทำงานระดับ intermediate-advanced "
-            "เช่น office, negotiation, delegation, stakeholder, productivity"
+            "การทำงานในออฟฟิศและการสื่อสารระดับ intermediate-advanced "
+            "เช่น คำที่ใช้ในอีเมลธุรกิจ เช่น pursuant to, per our discussion, "
+            "as per your request, kindly revert, loop in, touch base, "
+            "take this offline, circle back, deliverable, bandwidth, "
+            "escalate, stakeholder, actionable, synergy "
+            "เหมาะสำหรับการทำงานในออฟฟิศและส่งอีเมลระดับมืออาชีพ"
         )
     else:
         return get_vocab_from_ai(random.choice(["economics", "workplace"]), user_id)
@@ -89,13 +95,11 @@ def get_vocab_from_ai(category="random", user_id=None):
         "EXAMPLE: ประโยคสั้นๆ\n"
         "TIP: เทคนิคจำ 1 ประโยค"
     )
-    # Gemini ฟรี ใช้สร้างคำศัพท์
     response = gemini.generate_content(prompt)
     return response.text
 
 def get_greeting_from_ai():
-    # Claude Haiku ใช้ greeting เพราะหวานกว่า Gemini
-    # เสียแค่ $0.0001/ครั้ง = ถูกมาก
+    # Claude Haiku — ใช้แค่ greeting เพราะหวานกว่า Gemini
     response = claude.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=80,
@@ -106,6 +110,19 @@ def get_greeting_from_ai():
         )}]
     )
     return response.content[0].text.strip()
+
+def get_chat_reply(text):
+    # Gemini คุยเล่น — ฟรี แต่มี quota 500 ครั้ง/วัน
+    try:
+        response = gemini.generate_content(
+            f"คุณชื่อประเทือง พูดแบ้วๆ ตอบสั้นๆ ไม่เกิน 2 บรรทัด "
+            f"กวนตีนนิดหน่อยแต่น่ารัก ลงท้ายด้วย งับ หรือ เยย "
+            f"ตอบข้อความนี้เป็นภาษาไทย: {text}"
+        )
+        return response.text.strip()
+    except:
+        # ถ้า Gemini หมด quota → ใช้ auto reply สำรอง
+        return random.choice(SLEEPING_REPLIES)
 
 def format_vocab(raw, user_id):
     # แปลง text จาก AI → Dictionary แล้วจัดหน้าตาให้อ่านง่าย
@@ -182,8 +199,12 @@ def handle_message(event):
     text = event.message.text.strip().lower()
 
     if text in ["คำศัพท์", "vocab", "word", "ขอคำศัพท์"]:
-        # Gemini สร้างคำศัพท์ — ฟรี
-        reply = format_vocab(get_vocab_from_ai("random", uid), uid)
+        # Gemini สร้างคำศัพท์ สุ่ม work80/econ20
+        category = random.choices(
+            ["workplace", "economics"],
+            weights=[80, 20]
+        )[0]
+        reply = format_vocab(get_vocab_from_ai(category, uid), uid)
 
     elif text == "econ":
         reply = format_vocab(get_vocab_from_ai("economics", uid), uid)
@@ -218,8 +239,16 @@ def handle_message(event):
         )
 
     else:
-        # ไม่เรียก AI = ฟรี
-        reply = random.choice(SLEEPING_REPLIES)
+        # auto 30% / Gemini คุยเล่น 70%
+        use_gemini = random.choices(
+            [True, False],
+            weights=[70, 30]
+        )[0]
+
+        if use_gemini:
+            reply = get_chat_reply(text)
+        else:
+            reply = random.choice(SLEEPING_REPLIES)
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
