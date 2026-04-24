@@ -11,7 +11,7 @@ handler = WebhookHandler(os.environ["CHANNEL_SECRET"])
 claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 SLEEPING_REPLIES = [
-    "ประเทืองกำลังหลับ 😴 พิมพ์ 'word' เพื่อฉลาดขึ้น",
+    "ประเทืองกำลังหลับ 😴 พิมพ์ 'vocab' เพื่อฉลาดขึ้น",
     "ประเทืองไม่ว่าง ไปท่องคำศัพท์ก่อนได้เลย 🙄",
     "อย่ามารบกวน ประเทืองฝันดีอยู่ 💤",
     "ประเทืองขอนอนก่อนนะ พิมพ์ 'word' ดีกว่า 😒",
@@ -21,11 +21,23 @@ SLEEPING_REPLIES = [
 ]
 
 def get_vocab_from_ai():
+    category = random.choice(["economics", "workplace"])
+    if category == "economics":
+        topic = (
+            "คำศัพท์ภาษาอังกฤษด้านเศรษฐศาสตร์ระดับ graduate "
+            "เช่น macroeconomics, monetary policy, fiscal policy, GDP, inflation "
+            "เหมาะสำหรับเตรียมสอบ ป.โท economics"
+        )
+    else:
+        topic = (
+            "คำศัพท์ภาษาอังกฤษที่ใช้ในที่ทำงานระดับ intermediate-advanced "
+            "เช่น professional communication, business, management"
+        )
     response = claude.messages.create(
         model="claude-opus-4-5",
         max_tokens=300,
         messages=[{"role": "user", "content": (
-            "สร้างคำศัพท์ภาษาอังกฤษระดับ intermediate 1 คำ "
+            f"สร้างคำศัพท์ภาษาอังกฤษ 1 คำ ประเภท: {topic}\n"
             "ตอบในรูปแบบนี้เท่านั้น ห้ามเพิ่มอะไรนอกจากนี้:\n"
             "WORD: คำศัพท์\n"
             "MEANING: ความหมายภาษาไทย\n"
@@ -57,10 +69,10 @@ def format_vocab(raw):
     return (
         f"✨ คำศัพท์ประจำวัน\n"
         f"━━━━━━━━━━━━━━\n"
-        f"📖 {data.get('WORD','—')}\n"
-        f"🇹🇭 {data.get('MEANING','—')}\n"
-        f"💬 {data.get('EXAMPLE','—')}\n"
-        f"💡 {data.get('TIP','—')}\n"
+        f"📖 {data.get('WORD', '—')}\n"
+        f"🇹🇭 {data.get('MEANING', '—')}\n"
+        f"💬 {data.get('EXAMPLE', '—')}\n"
+        f"💡 {data.get('TIP', '—')}\n"
         f"━━━━━━━━━━━━━━"
     )
 
