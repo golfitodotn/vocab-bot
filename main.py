@@ -56,7 +56,7 @@ SLEEPING_REPLIES = [
 def get_vocab_from_ai(category="random", user_id=None):
     used_words, _ = get_user_data(user_id) if user_id else ([], 0)
     # ส่ง 100 คำล่าสุด เพื่อป้องกันซ้ำ แต่ไม่ให้ prompt ยาวเกิน
-    used_text = ", ".join(used_words[-100:]) if used_words else "ยังไม่มี"
+    used_text = ", ".join(used_words[-500:]) if used_words else "ยังไม่มี"
 
     if category == "economics":
         topic = (
