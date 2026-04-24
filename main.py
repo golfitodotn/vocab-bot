@@ -148,8 +148,14 @@ def send_reminder():
         uids.append(os.environ.get("FRIEND_USER_ID"))
     if not uids:
         return
-    msg = "อย่าลืมทวนศัพท์นะ 📚\nแล้วก็เลิกเล่น TikTok ได้แล้ว ประเทืองแสบตา 👁️"
     for uid in uids:
+        count = get_word_count(uid)
+        msg = (
+            f"อย่าลืมทวนศัพท์นะ 📚\n"
+            f"แล้วก็เลิกเล่น TikTok ได้แล้ว ประเทืองแสบตา 👁️\n\n"
+            f"📊 วันนี้เรียนไปแล้ว {count} คำรวมทั้งหมด\n"
+            f"เก่งมากนะ ขยันต่อไปเลย! 💪"
+        )
         line_bot_api.push_message(uid, TextSendMessage(text=msg))
 
 scheduler = BackgroundScheduler(timezone="Asia/Bangkok")
