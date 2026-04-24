@@ -11,7 +11,6 @@ line_bot_api = LineBotApi(os.environ["CHANNEL_ACCESS_TOKEN"])
 handler = WebhookHandler(os.environ["CHANNEL_SECRET"])
 claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
-# เชื่อมต่อ Google Sheets
 def get_sheet():
     creds = Credentials.from_service_account_info(
         {
@@ -25,18 +24,28 @@ def get_sheet():
     client = gspread.authorize(creds)
     return client.open_by_key(os.environ["GOOGLE_SHEET_ID"]).sheet1
 
-def get_used_words():
+def get_used_words(user_id):
     try:
         sheet = get_sheet()
-        words = sheet.col_values(1)
-        return [w.lower() for w in words if w and w != "word"]
+        records = sheet.get_all_records()
+        return [r["word"].lower() for r in records if str(r["user_id"]) == str(user_id)]
     except:
         return []
 
-def save_word(word):
+def get_word_count(user_id):
     try:
         sheet = get_sheet()
-        sheet.append_row([word])
+        records = sheet.get_all_records()
+        return len([r for r in records if str(r["user_id"]) == str(user_id)])
+    except:
+        return 0
+
+def save_word(word, user_id):
+    try:
+        sheet = get_sheet()
+        if sheet.row_count == 0 or sheet.cell(1, 1).value != "word":
+            sheet.update("A1", [["word", "user_id"]])
+        sheet.append_row([word, user_id])
     except:
         pass
 
@@ -50,8 +59,8 @@ SLEEPING_REPLIES = [
     "หยุดพิมพ์แล้วไปท่องคำศัพท์เถอะ 😤",
 ]
 
-def get_vocab_from_ai(category="random"):
-    used_words = get_used_words()
+def get_vocab_from_ai(category="random", user_id=None):
+    used_words = get_used_words(user_id) if user_id else []
     used_text = ", ".join(used_words[-50:]) if used_words else "ยังไม่มี"
 
     if category == "economics":
@@ -67,7 +76,7 @@ def get_vocab_from_ai(category="random"):
         )
     else:
         chosen = random.choice(["economics", "workplace"])
-        return get_vocab_from_ai(chosen)
+        return get_vocab_from_ai(chosen, user_id)
 
     response = claude.messages.create(
         model="claude-opus-4-5",
@@ -97,14 +106,14 @@ def get_greeting_from_ai():
     )
     return response.content[0].text.strip()
 
-def format_vocab(raw):
+def format_vocab(raw, user_id):
     data = {}
     for line in raw.strip().split("\n"):
         if ": " in line:
             key, val = line.split(": ", 1)
             data[key.strip()] = val.strip()
     word = data.get('WORD', '—')
-    save_word(word)
+    save_word(word, user_id)
     return (
         f"✨ คำศัพท์ประจำวัน\n"
         f"━━━━━━━━━━━━━━\n"
@@ -124,9 +133,9 @@ def send_daily_vocab():
     if not uids:
         return
     greeting = get_greeting_from_ai()
-    vocab = format_vocab(get_vocab_from_ai())
-    msg = f"{greeting}\n\n{vocab}"
     for uid in uids:
+        vocab = format_vocab(get_vocab_from_ai("random", uid), uid)
+        msg = f"{greeting}\n\n{vocab}"
         line_bot_api.push_message(uid, TextSendMessage(text=msg))
 
 def send_reminder():
@@ -155,16 +164,33 @@ async def webhook(request: Request):
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
+    uid = event.source.user_id
     text = event.message.text.strip().lower()
 
     if text in ["คำศัพท์", "vocab", "word", "ขอคำศัพท์"]:
-        reply = format_vocab(get_vocab_from_ai("random"))
+        reply = format_vocab(get_vocab_from_ai("random", uid), uid)
     elif text == "econ":
-        reply = format_vocab(get_vocab_from_ai("economics"))
+        reply = format_vocab(get_vocab_from_ai("economics", uid), uid)
     elif text == "work":
-        reply = format_vocab(get_vocab_from_ai("workplace"))
+        reply = format_vocab(get_vocab_from_ai("workplace", uid), uid)
+    elif text == "นับ":
+        count = get_word_count(uid)
+        reply = f"📊 คุณเรียนไปแล้ว {count} คำแล้วนะ เก่งมาก! 🎉"
     elif text == "myid":
-        reply = f"User ID ของคุณ:\n{event.source.user_id}"
+        reply = f"User ID ของคุณ:\n{uid}"
+    elif text in ["help", "ช่วยเหลือ", "คำสั่ง"]:
+        reply = (
+            "📋 คำสั่งทั้งหมดของประเทือง\n"
+            "━━━━━━━━━━━━━━\n"
+            "📖 word — ขอคำศัพท์สุ่ม\n"
+            "📊 econ — คำศัพท์เศรษฐศาสตร์\n"
+            "💼 work — คำศัพท์ทำงาน\n"
+            "🔢 นับ — ดูว่าเรียนไปกี่คำแล้ว\n"
+            "🆔 myid — ดู User ID ของคุณ\n"
+            "━━━━━━━━━━━━━━\n"
+            "⏰ ประเทืองส่งคำศัพท์ให้ทุกเช้า 7:00 น.\n"
+            "🌙 แล้วก็จะทวงให้ทวนศัพท์ตอน 3 ทุ่มด้วยนะ 😏"
+        )
     else:
         reply = random.choice(SLEEPING_REPLIES)
 
