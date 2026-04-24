@@ -111,6 +111,7 @@ def get_greeting_from_ai():
         messages=[{"role": "user", "content": (
             "ทักทายตอนเช้าแบบแฟนทักแฟน ภาษาไทย หวานๆ ไม่เกิน 2 บรรทัด "
             "ห้ามใช้ชื่อ emoji ได้ 1 ตัว ให้ต่างกันทุกวัน"
+            "พูดแบ้วๆ ลงท้ายด้วย งับ หรือ เยย หรือ แง้วๆ"
         )}]
     )
     return response.content[0].text.strip()
