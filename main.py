@@ -80,7 +80,7 @@ def handle_message(event):
     if text in ["คำศัพท์", "vocab", "word", "ขอคำศัพท์"]:
         reply = format_vocab(get_vocab_from_ai())
     else:
-        reply = "👋 สวัสดีครับ!\nพิมพ์ 'คำศัพท์' เพื่อขอคำศัพท์ใหม่ได้เลยครับ 😊"
+        reply = "ประเทืองกำลังหลับ 😴"
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
 @app.get("/")
