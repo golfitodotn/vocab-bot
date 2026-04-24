@@ -93,9 +93,8 @@ def get_vocab_from_ai(category="random", user_id=None):
         return response.text
     except:
         # Gemini error → บอก user
-        return (
-            "ประเทืองหมดคำจะพูด -.-"
-        )
+        return "ประเทืองหมดคำจะพูด -.-"
+        
 
 def get_greeting_from_ai():
     # Claude Haiku — ใช้แค่ greeting
