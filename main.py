@@ -117,8 +117,11 @@ def format_vocab(raw, user_id):
         f"✨ คำศัพท์ประจำวัน\n"
         f"━━━━━━━━━━━━━━\n"
         f"📖 \n{word}\n"
+        f"━━━━━━━━━━━━━━\n"        
         f"🇹🇭 \n{data.get('MEANING', '—')}\n"
+        f"━━━━━━━━━━━━━━\n"      
         f"💬 \n{data.get('EXAMPLE', '—')}\n"
+        f"━━━━━━━━━━━━━━\n"      
         f"💡 \n{data.get('TIP', '—')}\n"
         f"━━━━━━━━━━━━━━"
     )
