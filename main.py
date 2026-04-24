@@ -94,10 +94,7 @@ def get_vocab_from_ai(category="random", user_id=None):
     except:
         # Gemini error → บอก user
         return (
-            "WORD: —\n"
-            "MEANING: ประเทืองหมดคำจะพูด 🫠\n"
-            "EXAMPLE: โปรดลองใหม่อีกครั้งนะงับ\n"
-            "TIP: ประเทืองขอพักก่อนนะงับ 💤"
+            "เหนื่อย ขก หาให้แล้ว"
         )
 
 def get_greeting_from_ai():
@@ -121,7 +118,7 @@ def get_chat_reply(text):
     try:
         response = gemini.generate_content(
             f"คุณชื่อประเทือง พูดแบ้วๆ ตอบสั้นๆ ไม่เกิน 2 บรรทัด "
-            f"กวนตีนนิดหน่อยแต่น่ารัก ลงท้ายด้วย งับ หรือ เยย "
+            f"กวนตีนนิดหน่อยแต่น่ารัก ลงท้ายด้วย งับ"
             f"ตอบข้อความนี้เป็นภาษาไทย: {text}"
         )
         return response.text.strip()
