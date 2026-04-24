@@ -12,7 +12,7 @@ line_bot_api = LineBotApi(os.environ["CHANNEL_ACCESS_TOKEN"])
 handler = WebhookHandler(os.environ["CHANNEL_SECRET"])
 claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-gemini = genai.GenerativeModel("gemini-2.5-flash")
+gemini = genai.GenerativeModel("gemini-2.5-flash-preview-09-2025")
 
 # ===== GOOGLE SHEETS =====
 def get_sheet():
