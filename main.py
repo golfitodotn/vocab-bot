@@ -12,7 +12,7 @@ line_bot_api = LineBotApi(os.environ["CHANNEL_ACCESS_TOKEN"])
 handler = WebhookHandler(os.environ["CHANNEL_SECRET"])
 claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-gemini = genai.GenerativeModel("gemini-2.5-flash-lite-preview-06-17")
+gemini = genai.GenerativeModel("gemini-2.5-flash-lite")
 
 # ===== GOOGLE SHEETS =====
 def get_sheet():
@@ -123,7 +123,12 @@ def get_chat_reply(text):
         return response.text.strip()
     except:
         # Gemini error → ตอบว่าหมดคำ
-        return "ประเทืองหมดคำจะพูด -.-"
+         return (
+            "WORD: —\n"
+            "MEANING: พักแปป 🫠\n"
+            "EXAMPLE: พักแปป\n"
+            "TIP: พักแปป 💤"
+        )
 
 def format_vocab(raw, user_id):
     data = {}
