@@ -2,13 +2,43 @@ from fastapi import FastAPI, Request
 from linebot import LineBotApi, WebhookHandler
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from apscheduler.schedulers.background import BackgroundScheduler
-import anthropic, os, random
+import anthropic, os, random, gspread
+from google.oauth2.service_account import Credentials
 
 app = FastAPI()
 
 line_bot_api = LineBotApi(os.environ["CHANNEL_ACCESS_TOKEN"])
 handler = WebhookHandler(os.environ["CHANNEL_SECRET"])
 claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+# เชื่อมต่อ Google Sheets
+def get_sheet():
+    creds = Credentials.from_service_account_info(
+        {
+            "type": "service_account",
+            "private_key": os.environ["GOOGLE_PRIVATE_KEY"].replace("\\n", "\n"),
+            "client_email": os.environ["GOOGLE_CLIENT_EMAIL"],
+            "token_uri": "https://oauth2.googleapis.com/token",
+        },
+        scopes=["https://www.googleapis.com/auth/spreadsheets"]
+    )
+    client = gspread.authorize(creds)
+    return client.open_by_key(os.environ["GOOGLE_SHEET_ID"]).sheet1
+
+def get_used_words():
+    try:
+        sheet = get_sheet()
+        words = sheet.col_values(1)
+        return [w.lower() for w in words if w and w != "word"]
+    except:
+        return []
+
+def save_word(word):
+    try:
+        sheet = get_sheet()
+        sheet.append_row([word])
+    except:
+        pass
 
 SLEEPING_REPLIES = [
     "ประเทืองกำลังหลับ 😴 พิมพ์ 'word' เพื่อฉลาดขึ้น",
@@ -21,6 +51,9 @@ SLEEPING_REPLIES = [
 ]
 
 def get_vocab_from_ai(category="random"):
+    used_words = get_used_words()
+    used_text = ", ".join(used_words[-50:]) if used_words else "ยังไม่มี"
+
     if category == "economics":
         topic = (
             "คำศัพท์ภาษาอังกฤษด้านเศรษฐศาสตร์ระดับ intermediate ขึ้นไป "
@@ -41,6 +74,7 @@ def get_vocab_from_ai(category="random"):
         max_tokens=300,
         messages=[{"role": "user", "content": (
             f"สร้างคำศัพท์ภาษาอังกฤษ 1 คำ ประเภท: {topic}\n"
+            f"ห้ามใช้คำเหล่านี้ที่เคยส่งไปแล้ว: {used_text}\n"
             "ตอบในรูปแบบนี้เท่านั้น ห้ามเพิ่มอะไรนอกจากนี้:\n"
             "WORD: คำศัพท์\n"
             "MEANING: ความหมายภาษาไทย\n"
@@ -69,10 +103,12 @@ def format_vocab(raw):
         if ": " in line:
             key, val = line.split(": ", 1)
             data[key.strip()] = val.strip()
+    word = data.get('WORD', '—')
+    save_word(word)
     return (
         f"✨ คำศัพท์ประจำวัน\n"
         f"━━━━━━━━━━━━━━\n"
-        f"📖 {data.get('WORD', '—')}\n"
+        f"📖 {word}\n"
         f"🇹🇭 {data.get('MEANING', '—')}\n"
         f"💬 {data.get('EXAMPLE', '—')}\n"
         f"💡 {data.get('TIP', '—')}\n"
@@ -123,16 +159,12 @@ def handle_message(event):
 
     if text in ["คำศัพท์", "vocab", "word", "ขอคำศัพท์"]:
         reply = format_vocab(get_vocab_from_ai("random"))
-
     elif text == "econ":
         reply = format_vocab(get_vocab_from_ai("economics"))
-
     elif text == "work":
         reply = format_vocab(get_vocab_from_ai("workplace"))
-
     elif text == "myid":
         reply = f"User ID ของคุณ:\n{event.source.user_id}"
-
     else:
         reply = random.choice(SLEEPING_REPLIES)
 
