@@ -11,7 +11,7 @@ handler = WebhookHandler(os.environ["CHANNEL_SECRET"])
 claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 SLEEPING_REPLIES = [
-    "ประเทืองกำลังหลับ 😴 พิมพ์ 'vocab' เพื่อฉลาดขึ้น",
+    "ประเทืองกำลังหลับ 😴 พิมพ์ 'word' เพื่อฉลาดขึ้น",
     "ประเทืองไม่ว่าง ไปท่องคำศัพท์ก่อนได้เลย 🙄",
     "อย่ามารบกวน ประเทืองฝันดีอยู่ 💤",
     "ประเทืองขอนอนก่อนนะ พิมพ์ 'word' ดีกว่า 😒",
@@ -77,13 +77,18 @@ def format_vocab(raw):
     )
 
 def send_daily_vocab():
-    uid = os.environ.get("MY_USER_ID", "")
-    if not uid or uid == "temp":
+    uids = []
+    if os.environ.get("MY_USER_ID"):
+        uids.append(os.environ.get("MY_USER_ID"))
+    if os.environ.get("FRIEND_USER_ID"):
+        uids.append(os.environ.get("FRIEND_USER_ID"))
+    if not uids:
         return
     greeting = get_greeting_from_ai()
     vocab = format_vocab(get_vocab_from_ai())
     msg = f"{greeting}\n\n{vocab}"
-    line_bot_api.push_message(uid, TextSendMessage(text=msg))
+    for uid in uids:
+        line_bot_api.push_message(uid, TextSendMessage(text=msg))
 
 scheduler = BackgroundScheduler(timezone="Asia/Bangkok")
 scheduler.add_job(send_daily_vocab, "cron", hour=7, minute=0)
