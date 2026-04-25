@@ -174,13 +174,6 @@ def get_chat_reply(text, uid):
         )
         return response.text.strip()
     except:
-        # ถ้า Gemini error → fallback Claude
-        try:
-        response = gemini.generate_content(
-            f"{persona}\nตอบข้อความนี้เป็นภาษาไทย: {text}"
-        )
-        return response.text.strip()
-    except:
         return "ประเทืองเหนื่อย หมดคำจะพูด -.-"
 
 def format_vocab(raw, user_id):
