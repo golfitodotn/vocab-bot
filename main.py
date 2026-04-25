@@ -15,13 +15,17 @@ line_bot_api = LineBotApi(os.environ["CHANNEL_ACCESS_TOKEN"])
 handler = WebhookHandler(os.environ["CHANNEL_SECRET"])
 claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
-# ===== KEYWORD =====
+# ===== KEYWORDS =====
 OWNER_KEYWORDS = ["แฟน", "เขา", "นาย", "golf", "กอล์ฟ", "พี่", "คิดถึง", "คถ", "กอฟ", "พ่อ", "ป่ะปี๊", "ปะปี๊"]
+MOOD_KEYWORDS = ["งอล", "งอน", "โกรธ", "โกด", "โมโห", "น้อยใจ", "ซึม"]
 
 def is_mentioning_owner(text):
     return any(kw in text.lower() for kw in OWNER_KEYWORDS)
 
-# ===== GOOGLE SHEETS — cache เพื่อความเร็ว =====
+def is_bad_mood(text):
+    return any(kw in text.lower() for kw in MOOD_KEYWORDS)
+
+# ===== GOOGLE SHEETS =====
 _sheet_cache = None
 _data_cache = {}
 
@@ -81,7 +85,7 @@ SLEEPING_REPLIES = [
     "หยุดพิมพ์ได้แล้วไปท่องศัพท์เถอะนะ 😤",
 ]
 
-# ===== AI FUNCTIONS — ใช้ Claude ทั้งหมด =====
+# ===== AI FUNCTIONS =====
 def get_vocab_from_ai(category="random", user_id=None):
     used_words, _ = get_user_data(user_id) if user_id else ([], 0)
     used_text = ", ".join(used_words) if used_words else "ยังไม่มี"
@@ -168,7 +172,6 @@ def get_chat_reply(text, uid):
         )
 
     try:
-        # ใช้ Gemini สำหรับคุยเล่น — ฟรี
         response = gemini.generate_content(
             f"{persona}\nตอบข้อความนี้เป็นภาษาไทย: {text}"
         )
@@ -256,6 +259,26 @@ def handle_message(event):
 
     # เช็คเฉพาะ FRIEND_USER_ID เท่านั้น
     if uid == friend_uid and friend_uid and my_uid:
+
+        # เช็คอารมณ์ก่อน — priority สูงสุด
+        if is_bad_mood(text):
+            line_bot_api.push_message(
+                my_uid,
+                TextSendMessage(
+                    text=(
+                        f"🚨 คุณพ่อ RED CODE RED CODE 🚨\n"
+                        f"─────────────\n"
+                        f"แม่พูดว่า: \"{event.message.text}\""
+                    )
+                )
+            )
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text="ประเทืองจะนำส่งเรื่องให้คุณชายงับ 📨")
+            )
+            return
+
+        # เช็คว่าพูดถึงพ่อไหม
         if is_mentioning_owner(text):
             bot_reply = get_chat_reply(event.message.text, uid)
             line_bot_api.push_message(
