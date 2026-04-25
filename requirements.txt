@@ -5,4 +5,4 @@ apscheduler
 anthropic
 gspread
 google-auth
-google-generativeai
+google-genai
