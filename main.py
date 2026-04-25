@@ -3,7 +3,6 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from apscheduler.schedulers.background import BackgroundScheduler
 import anthropic, os, random, gspread
-import google.generativeai as genai
 from google.oauth2.service_account import Credentials
 
 app = FastAPI()
@@ -11,8 +10,6 @@ app = FastAPI()
 line_bot_api = LineBotApi(os.environ["CHANNEL_ACCESS_TOKEN"])
 handler = WebhookHandler(os.environ["CHANNEL_SECRET"])
 claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-gemini = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
 
 # ===== KEYWORD =====
 OWNER_KEYWORDS = ["แฟน", "เขา", "นาย", "golf", "กอล์ฟ", "พี่", "คิดถึง", "คถ", "กอฟ", "พ่อ", "ป่ะปี๊", "ปะปี๊"]
@@ -22,19 +19,26 @@ def is_mentioning_owner(text):
 
 # ===== GOOGLE SHEETS — cache เพื่อความเร็ว =====
 _sheet_cache = None
-_data_cache = {}  # เก็บข้อมูล user ไว้ใน memory
+_data_cache = {}
 
 def get_sheet():
     global _sheet_cache
     if _sheet_cache is not None:
         return _sheet_cache
-    creds = Credentials.from_service_account_info(...)
+    creds = Credentials.from_service_account_info(
+        {
+            "type": "service_account",
+            "private_key": os.environ["GOOGLE_PRIVATE_KEY"].replace("\\n", "\n"),
+            "client_email": os.environ["GOOGLE_CLIENT_EMAIL"],
+            "token_uri": "https://oauth2.googleapis.com/token",
+        },
+        scopes=["https://www.googleapis.com/auth/spreadsheets"]
+    )
     client = gspread.authorize(creds)
     _sheet_cache = client.open_by_key(os.environ["GOOGLE_SHEET_ID"]).sheet1
     return _sheet_cache
 
 def get_user_data(user_id):
-    # ถ้ามีใน cache แล้วใช้เลย ไม่ query Sheets
     if user_id in _data_cache:
         words = _data_cache[user_id]
         return words, len(words)
@@ -42,26 +46,23 @@ def get_user_data(user_id):
         records = get_sheet().get_all_records()
         user_records = [r for r in records if str(r["user_id"]) == str(user_id)]
         words = [r["word"].lower() for r in user_records]
-        _data_cache[user_id] = words  # เก็บไว้ใน cache
+        _data_cache[user_id] = words
         return words, len(words)
     except:
         return [], 0
 
-def save_word(word, user_id):
+def save_word(word, user_id, meaning=""):
     try:
-        get_sheet().append_row([word, user_id])
-        # อัปเดต cache ด้วย ไม่ต้อง query ใหม่
+        get_sheet().append_row([word, user_id, meaning])
         if user_id in _data_cache:
             _data_cache[user_id].append(word.lower())
     except:
         pass
 
 def get_vocab_history(user_id):
-    """ดึงคำศัพท์ที่เคยเรียนพร้อมความหมาย"""
     try:
         records = get_sheet().get_all_records()
         user_records = [r for r in records if str(r["user_id"]) == str(user_id)]
-        # เอาแค่ word และ meaning
         return [(r.get("word", ""), r.get("meaning", "")) for r in user_records if r.get("word")]
     except:
         return []
@@ -76,7 +77,7 @@ SLEEPING_REPLIES = [
     "หยุดพิมพ์ได้แล้วไปท่องศัพท์เถอะนะ 😤",
 ]
 
-# ===== AI FUNCTIONS =====
+# ===== AI FUNCTIONS — ใช้ Claude ทั้งหมด =====
 def get_vocab_from_ai(category="random", user_id=None):
     used_words, _ = get_user_data(user_id) if user_id else ([], 0)
     used_text = ", ".join(used_words) if used_words else "ยังไม่มี"
@@ -95,38 +96,10 @@ def get_vocab_from_ai(category="random", user_id=None):
             "เช่น คำที่ใช้ในอีเมลธุรกิจ เช่น pursuant to, per our discussion, "
             "as per your request, kindly revert, loop in, touch base, "
             "take this offline, circle back, deliverable, bandwidth, "
-            "escalate, stakeholder, actionable, synergy "
-            "เหมาะสำหรับการทำงานในออฟฟิศและส่งอีเมลระดับมืออาชีพ"
+            "escalate, stakeholder, actionable, synergy"
         )
     else:
         return get_vocab_from_ai(random.choice(["economics", "workplace"]), user_id)
-
-    try:
-        prompt = (
-            f"สร้างคำศัพท์ภาษาอังกฤษ 1 คำ หมวด: {topic}\n"
-            f"ห้ามใช้คำเหล่านี้: {used_text}\n"
-            "ตอบแค่นี้เท่านั้น ห้ามเพิ่มอะไรนอกจากนี้:\n"
-            "WORD: คำ\n"
-            "MEANING: ความหมายไทย\n"
-            "EXAMPLE: ประโยคสั้นๆ\n"
-            "TIP: เทคนิคจำ 1 ประโยค"
-        )
-        response = gemini.generate_content(prompt)
-        return response.text
-    except:
-        return "ประเทืองหมดคำจะพูด -.-"
-
-def get_vocab_from_claude(category="random", user_id=None):
-    """เรียก Claude แทน Gemini — ใช้เทส ความเร็ว"""
-    used_words, _ = get_user_data(user_id) if user_id else ([], 0)
-    used_text = ", ".join(used_words) if used_words else "ยังไม่มี"
-
-    if category == "economics":
-        topic = "เศรษฐศาสตร์และการเงินระดับ intermediate-advanced"
-    elif category == "workplace":
-        topic = "การทำงานในออฟฟิศและอีเมลธุรกิจระดับ intermediate-advanced"
-    else:
-        return get_vocab_from_claude(random.choice(["economics", "workplace"]), user_id)
 
     try:
         response = claude.messages.create(
@@ -135,7 +108,7 @@ def get_vocab_from_claude(category="random", user_id=None):
             messages=[{"role": "user", "content": (
                 f"สร้างคำศัพท์ภาษาอังกฤษ 1 คำ หมวด: {topic}\n"
                 f"ห้ามใช้คำเหล่านี้: {used_text}\n"
-                "ตอบแค่นี้เท่านั้น:\n"
+                "ตอบแค่นี้เท่านั้น ห้ามเพิ่มอะไรนอกจากนี้:\n"
                 "WORD: คำ\n"
                 "MEANING: ความหมายไทย\n"
                 "EXAMPLE: ประโยคสั้นๆ\n"
@@ -169,30 +142,34 @@ def get_chat_reply(text, uid):
 
     if uid == my_uid:
         persona = (
-            "คุณคือลูกชื่อประเทือง กำลังคุยกับพ่อ "
+            "คุณคือลูกชื่อประเทืองเป็นผู้ชาย กำลังคุยกับพ่อ "
             "แทนตัวเองว่าผม ตอบสั้นๆ ไม่เกิน 2 บรรทัด "
             "พูดเพราะกวนนิดหน่อยแต่น่ารักไม่พูดคำหยาบ "
             "เข้าข้างพ่อเสมอ ถ้าพ่อบ่นอะไรให้เห็นด้วย "
+            "ห้ามใช้ Markdown ตอบเป็นข้อความธรรมดา"
         )
     elif uid == friend_uid:
         persona = (
-            "คุณคือลูกชื่อประเทือง กำลังคุยกับแม่ "
+            "คุณคือลูกชื่อประเทืองเป็นผู้ชาย กำลังคุยกับแม่ "
             "แทนตัวเองว่าผม ตอบสั้นๆ ไม่เกิน 2 บรรทัด "
             "พูดเพราะกวนนิดหน่อยแต่น่ารักไม่พูดคำหยาบ "
-            "รักแม่นะแต่ขอเข้าข้างพ่อมากกว่านิดนึงและพ่อไม่ผิดไม่ว่าแม่จะถามอะไร 😅 "
+            "รักแม่นะแต่ขอเข้าข้างพ่อมากกว่านิดนึง 😅 "
+            "ห้ามใช้ Markdown ตอบเป็นข้อความธรรมดา"
         )
     else:
         persona = (
             "คุณชื่อประเทือง เป็นตัวแทนของลูก แทนตัวเองว่าผม "
             "พูดแบ้วๆ กวนตีนนิดหน่อยแต่น่ารัก ไม่พูดคำหยาบ "
-            "ลงท้ายด้วย งับ "
+            "ลงท้ายด้วย งับ ห้ามใช้ Markdown"
         )
 
     try:
-        response = gemini.generate_content(
-            f"{persona}ตอบข้อความนี้เป็นภาษาไทย: {text}"
+        response = claude.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=100,
+            messages=[{"role": "user", "content": f"{persona}\nตอบข้อความนี้เป็นภาษาไทย: {text}"}]
         )
-        return response.text.strip()
+        return response.content[0].text.strip()
     except:
         return random.choice(SLEEPING_REPLIES)
 
@@ -207,11 +184,7 @@ def format_vocab(raw, user_id):
     word = data.get("WORD", "—")
     meaning = data.get("MEANING", "—")
     if word != "—":
-        # บันทึกทั้ง word และ meaning ลง Sheets
-        try:
-            get_sheet().append_row([word, user_id, meaning])
-        except:
-            pass
+        save_word(word, user_id, meaning)
     return (
         f"✨ คำศัพท์วันนี้\n"
         f"─────────────\n"
@@ -309,18 +282,11 @@ def handle_message(event):
     elif text == "work":
         reply = format_vocab(get_vocab_from_ai("workplace", uid), uid)
 
-    # เทส Claude แทน Gemini — เช็คว่าช้าเพราะ Gemini หรือเปล่า
-    elif text == "testclaude":
-        category = random.choices(["workplace", "economics"], weights=[80, 20])[0]
-        reply = format_vocab(get_vocab_from_claude(category, uid), uid)
-
-    # ดูคำศัพท์ที่เคยเรียนไปแล้ว
-    elif text == "ประวัติ" or text == "history":
+    elif text in ["ประวัติ", "history"]:
         history = get_vocab_history(uid)
         if not history:
             reply = "ยังไม่มีคำศัพท์ในประวัติงับ ลองพิมพ์ word ก่อนเลยงับ 😊"
         else:
-            # แสดงแค่ 10 คำล่าสุด
             recent = history[-10:]
             lines = [f"📚 คำศัพท์ที่เรียนไปแล้ว ({len(history)} คำ)\n─────────────"]
             for i, (word, meaning) in enumerate(reversed(recent), 1):
@@ -371,8 +337,8 @@ def handle_message(event):
         )
 
     else:
-        use_gemini = random.choices([True, False], weights=[70, 30])[0]
-        if use_gemini:
+        use_claude = random.choices([True, False], weights=[70, 30])[0]
+        if use_claude:
             reply = get_chat_reply(text, uid)
         else:
             reply = random.choice(SLEEPING_REPLIES)
