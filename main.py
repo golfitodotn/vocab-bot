@@ -216,7 +216,6 @@ def handle_message(event):
                 TextSendMessage(
                     text=(
                         f"🔔 เห้ยเขาพูดถึงนายอะ!\n"
-                        f"─────────────\n"
                         f"พูดว่า: \"{event.message.text}\""
                     )
                 )
