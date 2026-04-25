@@ -16,7 +16,7 @@ gemini = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
 
 # ===== KEYWORD เช็คว่าเพื่อนพูดถึงเจ้าของไหม =====
 # แก้ให้ตรงกับชื่อที่เพื่อนใช้เรียกคุณได้เลย
-OWNER_KEYWORDS = ["แฟน", "เขา", "นาย", "golf", "กอล์ฟ","พี่","คิดถึง","คถ","กอฟ","พ่อ","ป่ะปี๊" ]
+OWNER_KEYWORDS = ["แฟน", "เขา", "นาย", "golf", "กอล์ฟ","พี่","คิดถึง","คถ","กอฟ","พ่อ","ป่ะปี๊"]
 
 def is_mentioning_owner(text):
     return any(kw in text.lower() for kw in OWNER_KEYWORDS)
@@ -175,4 +175,121 @@ def send_reminder():
     if not uids:
         return
     for uid in uids:
-        _, count = get_user_data
+        _, count = get_user_data(uid)
+        msg = (
+            f"🌙 ใกล้ดึกแล้วงับ\n"
+            f"─────────────\n"
+            f"อย่าลืมทวนศัพท์ก่อนนอนด้วยน้าาา 📚\n"
+            f"แล้วก็เลิกเล่น ทส ได้แล้วงับ แสบตา\n\n"
+            f"📊 เรียนสะสมไปแล้ว {count} คำแล้วงับ\n"
+            f"ขยันมากเยยยยย 💪"
+        )
+        line_bot_api.push_message(uid, TextSendMessage(text=msg))
+
+scheduler = BackgroundScheduler(timezone="Asia/Bangkok")
+scheduler.add_job(send_daily_vocab, "cron", hour=7, minute=0)
+scheduler.add_job(send_reminder, "cron", hour=21, minute=0)
+scheduler.start()
+
+# ===== WEBHOOK =====
+@app.post("/webhook")
+async def webhook(request: Request):
+    body = await request.body()
+    signature = request.headers.get("X-Line-Signature", "")
+    handler.handle(body.decode(), signature)
+    return {"status": "ok"}
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    uid = event.source.user_id
+    text = event.message.text.strip().lower()
+    my_uid = os.environ.get("MY_USER_ID")
+    friend_uid = os.environ.get("FRIEND_USER_ID")
+
+    # เช็คเฉพาะ FRIEND_USER_ID เท่านั้น
+    if uid == friend_uid and friend_uid and my_uid:
+        if is_mentioning_owner(text):
+            line_bot_api.push_message(
+                my_uid,
+                TextSendMessage(
+                    text=(
+                        f"🔔 เห้ยเขาพูดถึงนายอะ!\n"
+                        f"─────────────\n"
+                        f"พูดว่า: \"{event.message.text}\""
+                    )
+                )
+            )
+
+    if text in ["คำศัพท์", "vocab", "word", "ขอคำศัพท์"]:
+        category = random.choices(
+            ["workplace", "economics"],
+            weights=[80, 20]
+        )[0]
+        reply = format_vocab(get_vocab_from_ai(category, uid), uid)
+
+    elif text == "econ":
+        reply = format_vocab(get_vocab_from_ai("economics", uid), uid)
+
+    elif text == "work":
+        reply = format_vocab(get_vocab_from_ai("workplace", uid), uid)
+
+    elif text == "testmorning":
+        greeting = get_greeting_from_ai()
+        category = random.choices(
+            ["workplace", "economics"],
+            weights=[80, 20]
+        )[0]
+        vocab = format_vocab(get_vocab_from_ai(category, uid), uid)
+        reply = f"{greeting}\n\n{vocab}"
+
+    elif text == "testreminder":
+        _, count = get_user_data(uid)
+        reply = (
+            f"🌙 ใกล้ดึกแล้วงับ\n"
+            f"─────────────\n"
+            f"อย่าลืมทวนศัพท์ก่อนนอนด้วยน้าาา 📚\n"
+            f"แล้วก็เลิกเล่น ทส ได้แล้วงับ แสบตา\n\n"
+            f"📊 เรียนสะสมไปแล้ว {count} คำแล้วงับ\n"
+            f"ขยันมากเยยยยย 💪"
+        )
+
+    elif text == "นับ":
+        _, count = get_user_data(uid)
+        reply = (
+            f"📊 สถิติของนาย\n"
+            f"─────────────\n"
+            f"เรียนสะสมไปแล้ว {count} คำแล้วงับ\n"
+            f"เก่งมากเยยยย 🎉"
+        )
+
+    elif text == "myid":
+        reply = f"🆔 User ID ของคุณงับ\n{uid}"
+
+    elif text in ["help", "ช่วยเหลือ", "คำสั่ง"]:
+        reply = (
+            "📋 คำสั่งของประเทืองงับ\n"
+            "─────────────\n"
+            "word  —  คำศัพท์สุ่ม\n"
+            "econ  —  คำศัพท์เศรษฐศาสตร์\n"
+            "work  —  คำศัพท์ทำงาน\n"
+            "นับ    —  ดูสถิติของคุณ\n"
+            "─────────────\n"
+            "⏰  ส่งคำศัพท์ทุกเช้า 7:00 น. งับ\n"
+            "🌙  ทวงให้ทวนศัพท์ทุก 3 ทุ่มงับ"
+        )
+
+    else:
+        use_gemini = random.choices(
+            [True, False],
+            weights=[70, 30]
+        )[0]
+        if use_gemini:
+            reply = get_chat_reply(text)
+        else:
+            reply = random.choice(SLEEPING_REPLIES)
+
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
+
+@app.get("/")
+def root():
+    return {"status": "running"}
