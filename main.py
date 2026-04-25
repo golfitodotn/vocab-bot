@@ -16,7 +16,7 @@ gemini = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
 
 # ===== KEYWORD เช็คว่าเพื่อนพูดถึงเจ้าของไหม =====
 # แก้ให้ตรงกับชื่อที่เพื่อนใช้เรียกคุณได้เลย
-OWNER_KEYWORDS = ["แฟน", "เขา", "นาย", "golf", "กอล์ฟ","พี่","คิดถึง","คถ","กอฟ","พ่อ","ป่ะปี๊"]
+OWNER_KEYWORDS = ["แฟน", "เขา", "นาย", "golf", "กอล์ฟ","พี่","คิดถึง","คถ","กอฟ","พ่อ","ป่ะปี๊","ปะปี๊"]
 
 def is_mentioning_owner(text):
     return any(kw in text.lower() for kw in OWNER_KEYWORDS)
