@@ -3,7 +3,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from apscheduler.schedulers.background import BackgroundScheduler
 import anthropic, os, random, gspread
-import google.generativeai as genai
+from google import genai
 from google.oauth2.service_account import Credentials
 
 app = FastAPI()
@@ -11,17 +11,24 @@ app = FastAPI()
 line_bot_api = LineBotApi(os.environ["CHANNEL_ACCESS_TOKEN"])
 handler = WebhookHandler(os.environ["CHANNEL_SECRET"])
 claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-gemini = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
 
-# ===== KEYWORD เช็คว่าเพื่อนพูดถึงเจ้าของไหม =====
+# ใช้ google-genai ใหม่แทน google.generativeai ที่ deprecated แล้ว
+gemini = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+GEMINI_MODEL = "gemini-2.5-flash-lite"
+
+# ===== KEYWORD =====
 OWNER_KEYWORDS = ["แฟน", "เขา", "นาย", "golf", "กอล์ฟ", "พี่", "คิดถึง", "คถ", "กอฟ", "พ่อ", "ป่ะปี๊", "ปะปี๊"]
 
 def is_mentioning_owner(text):
     return any(kw in text.lower() for kw in OWNER_KEYWORDS)
 
-# ===== GOOGLE SHEETS =====
+# ===== GOOGLE SHEETS — cache ไว้ไม่ต้อง connect ใหม่ทุกครั้ง =====
+_sheet_cache = None
+
 def get_sheet():
+    global _sheet_cache
+    if _sheet_cache is not None:
+        return _sheet_cache
     creds = Credentials.from_service_account_info(
         {
             "type": "service_account",
@@ -32,7 +39,8 @@ def get_sheet():
         scopes=["https://www.googleapis.com/auth/spreadsheets"]
     )
     client = gspread.authorize(creds)
-    return client.open_by_key(os.environ["GOOGLE_SHEET_ID"]).sheet1
+    _sheet_cache = client.open_by_key(os.environ["GOOGLE_SHEET_ID"]).sheet1
+    return _sheet_cache
 
 def get_user_data(user_id):
     try:
@@ -60,6 +68,14 @@ SLEEPING_REPLIES = [
 ]
 
 # ===== AI FUNCTIONS =====
+def gemini_generate(prompt):
+    """ฟังก์ชันกลางสำหรับเรียก Gemini"""
+    response = gemini.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt
+    )
+    return response.text
+
 def get_vocab_from_ai(category="random", user_id=None):
     used_words, _ = get_user_data(user_id) if user_id else ([], 0)
     used_text = ", ".join(used_words) if used_words else "ยังไม่มี"
@@ -94,8 +110,7 @@ def get_vocab_from_ai(category="random", user_id=None):
             "EXAMPLE: ประโยคสั้นๆ\n"
             "TIP: เทคนิคจำ 1 ประโยค"
         )
-        response = gemini.generate_content(prompt)
-        return response.text
+        return gemini_generate(prompt)
     except:
         return "ประเทืองหมดคำจะพูด -.-"
 
@@ -121,7 +136,6 @@ def get_chat_reply(text, uid):
     friend_uid = os.environ.get("FRIEND_USER_ID")
 
     if uid == my_uid:
-        # คุยกับพ่อ → เข้าข้างพ่อ
         persona = (
             "คุณคือลูกชื่อประเทือง กำลังคุยกับพ่อ "
             "แทนตัวเองว่าผม ตอบสั้นๆ ไม่เกิน 2 บรรทัด "
@@ -129,7 +143,6 @@ def get_chat_reply(text, uid):
             "เข้าข้างพ่อเสมอ ถ้าพ่อบ่นอะไรให้เห็นด้วย "
         )
     elif uid == friend_uid:
-        # คุยกับแม่ → รักแม่แต่เข้าข้างพ่อมากกว่า
         persona = (
             "คุณคือลูกชื่อประเทือง กำลังคุยกับแม่ "
             "แทนตัวเองว่าผม ตอบสั้นๆ ไม่เกิน 2 บรรทัด "
@@ -144,11 +157,7 @@ def get_chat_reply(text, uid):
         )
 
     try:
-        response = gemini.generate_content(
-            f"{persona}"
-            f"ตอบข้อความนี้เป็นภาษาไทย: {text}"
-        )
-        return response.text.strip()
+        return gemini_generate(f"{persona}ตอบข้อความนี้เป็นภาษาไทย: {text}").strip()
     except:
         return random.choice(SLEEPING_REPLIES)
 
@@ -232,9 +241,7 @@ def handle_message(event):
     # เช็คเฉพาะ FRIEND_USER_ID เท่านั้น
     if uid == friend_uid and friend_uid and my_uid:
         if is_mentioning_owner(text):
-            # ให้ประเทืองตอบเพื่อนก่อน
             bot_reply = get_chat_reply(event.message.text, uid)
-            # แจ้งเจ้าของพร้อมข้อความที่เพื่อนส่งและที่ bot ตอบ
             line_bot_api.push_message(
                 my_uid,
                 TextSendMessage(
@@ -246,18 +253,14 @@ def handle_message(event):
                     )
                 )
             )
-            # ตอบกลับเพื่อน
             line_bot_api.reply_message(
                 event.reply_token,
                 TextSendMessage(text=bot_reply)
             )
-            return  # หยุดไม่ให้ทำ logic อื่นต่อ
+            return
 
     if text in ["คำศัพท์", "vocab", "word", "ขอคำศัพท์"]:
-        category = random.choices(
-            ["workplace", "economics"],
-            weights=[80, 20]
-        )[0]
+        category = random.choices(["workplace", "economics"], weights=[80, 20])[0]
         reply = format_vocab(get_vocab_from_ai(category, uid), uid)
 
     elif text == "econ":
@@ -268,10 +271,7 @@ def handle_message(event):
 
     elif text == "testmorning":
         greeting = get_greeting_from_ai()
-        category = random.choices(
-            ["workplace", "economics"],
-            weights=[80, 20]
-        )[0]
+        category = random.choices(["workplace", "economics"], weights=[80, 20])[0]
         vocab = format_vocab(get_vocab_from_ai(category, uid), uid)
         reply = f"{greeting}\n\n{vocab}"
 
@@ -312,10 +312,7 @@ def handle_message(event):
         )
 
     else:
-        use_gemini = random.choices(
-            [True, False],
-            weights=[70, 30]
-        )[0]
+        use_gemini = random.choices([True, False], weights=[70, 30])[0]
         if use_gemini:
             reply = get_chat_reply(text, uid)
         else:
