@@ -14,6 +14,13 @@ claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 gemini = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
 
+# ===== KEYWORD เช็คว่าเพื่อนพูดถึงเจ้าของไหม =====
+# แก้ให้ตรงกับชื่อที่เพื่อนใช้เรียกคุณได้เลย
+OWNER_KEYWORDS = ["แฟน", "เขา", "นาย", "golf", "กอล์ฟ","พี่","คิดถึง","คถ","กอฟ","พ่อ","ป่ะปี๊" ]
+
+def is_mentioning_owner(text):
+    return any(kw in text.lower() for kw in OWNER_KEYWORDS)
+
 # ===== GOOGLE SHEETS =====
 def get_sheet():
     creds = Credentials.from_service_account_info(
@@ -55,7 +62,6 @@ SLEEPING_REPLIES = [
 
 # ===== AI FUNCTIONS =====
 def get_vocab_from_ai(category="random", user_id=None):
-    # Gemini สร้างคำศัพท์ — ฟรี
     used_words, _ = get_user_data(user_id) if user_id else ([], 0)
     used_text = ", ".join(used_words) if used_words else "ยังไม่มี"
 
@@ -92,12 +98,9 @@ def get_vocab_from_ai(category="random", user_id=None):
         response = gemini.generate_content(prompt)
         return response.text
     except:
-        # Gemini error → บอก user
         return "ประเทืองหมดคำจะพูด -.-"
-        
 
 def get_greeting_from_ai():
-    # Claude Haiku — ใช้แค่ greeting
     try:
         response = claude.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -105,7 +108,9 @@ def get_greeting_from_ai():
             messages=[{"role": "user", "content": (
                 "ทักทายตอนเช้าแบบแฟนทักแฟน ภาษาไทย หวานๆ ไม่เกิน 2 บรรทัด "
                 "ห้ามใช้ชื่อ emoji ได้ 1 ตัว ให้ต่างกันทุกวัน "
-                "พูดแบ้วๆ ลงท้ายด้วย งับ หรือ เยย หรือ แง้วๆ"
+                "พูดแบ้วๆ ลงท้ายด้วย งับ หรือ เยย หรือ แง้วๆ "
+                "ห้ามใช้ # ** _ หรือ Markdown ใดๆ ทั้งสิ้น "
+                "ตอบเป็นข้อความธรรมดาเท่านั้น"
             )}]
         )
         return response.content[0].text.strip()
@@ -113,25 +118,20 @@ def get_greeting_from_ai():
         return "อรุณสวัสดิ์งับ 🌅 วันนี้ก็ขยันเรียนด้วยน้าาาา"
 
 def get_chat_reply(text):
-    # Gemini คุยเล่น — ฟรี
     try:
         response = gemini.generate_content(
             f"คุณชื่อประเทือง พูดแบ้วๆ ตอบสั้นๆ ไม่เกิน 2 บรรทัด "
-            f"กวนตีนนิดหน่อยแต่น่ารักไม่พูดคำหยาบ"
-            f"เหมือนคุยกับแฟน"
+            f"กวนตีนนิดหน่อยแต่น่ารักไม่พูดคำหยาบ "
+            f"เหมือนคุยกับแฟน "
             f"ตอบข้อความนี้เป็นภาษาไทย: {text}"
         )
         return response.text.strip()
     except:
-        # Gemini error → ตอบว่าหมดคำ
-         return (
-            "WORD: —\n"
-            "MEANING: พักแปป 🫠\n"
-            "EXAMPLE: พักแปป\n"
-            "TIP: พักแปป 💤"
-        )
+        return random.choice(SLEEPING_REPLIES)
 
 def format_vocab(raw, user_id):
+    if "หมดคำจะพูด" in raw:
+        return raw
     data = {}
     for line in raw.strip().split("\n"):
         if ": " in line:
@@ -160,7 +160,6 @@ def send_daily_vocab():
         return
     greeting = get_greeting_from_ai()
     for uid in uids:
-        # work 80% econ 20%
         category = random.choices(
             ["workplace", "economics"],
             weights=[80, 20]
@@ -176,87 +175,4 @@ def send_reminder():
     if not uids:
         return
     for uid in uids:
-        _, count = get_user_data(uid)
-        msg = (
-            f"🌙 ใกล้ดึกแล้วงับ\n"
-            f"─────────────\n"
-            f"อย่าลืมทวนศัพท์ก่อนนอนด้วยน้าาา 📚\n"
-            f"แล้วก็เลิกเล่น ทส ได้แล้วงับ แสบตา\n\n"
-            f"📊 เรียนสะสมไปแล้ว {count} คำแล้วงับ\n"
-            f"ขยันมากเยยยยย 💪"
-        )
-        line_bot_api.push_message(uid, TextSendMessage(text=msg))
-
-scheduler = BackgroundScheduler(timezone="Asia/Bangkok")
-scheduler.add_job(send_daily_vocab, "cron", hour=7, minute=0)
-scheduler.add_job(send_reminder, "cron", hour=21, minute=0)
-scheduler.start()
-
-# ===== WEBHOOK =====
-@app.post("/webhook")
-async def webhook(request: Request):
-    body = await request.body()
-    signature = request.headers.get("X-Line-Signature", "")
-    handler.handle(body.decode(), signature)
-    return {"status": "ok"}
-
-@handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    uid = event.source.user_id
-    text = event.message.text.strip().lower()
-
-    if text in ["คำศัพท์", "vocab", "word", "ขอคำศัพท์"]:
-        # work 80% econ 20%
-        category = random.choices(
-            ["workplace", "economics"],
-            weights=[80, 20]
-        )[0]
-        reply = format_vocab(get_vocab_from_ai(category, uid), uid)
-
-    elif text == "econ":
-        reply = format_vocab(get_vocab_from_ai("economics", uid), uid)
-
-    elif text == "work":
-        reply = format_vocab(get_vocab_from_ai("workplace", uid), uid)
-
-    elif text == "นับ":
-        _, count = get_user_data(uid)
-        reply = (
-            f"📊 สถิติของนาย\n"
-            f"─────────────\n"
-            f"เรียนสะสมไปแล้ว {count} คำแล้วงับ\n"
-            f"เก่งมากเยยยย 🎉"
-        )
-
-    elif text == "myid":
-        reply = f"🆔 User ID ของคุณงับ\n{uid}"
-
-    elif text in ["help", "ช่วยเหลือ", "คำสั่ง"]:
-        reply = (
-            "📋 คำสั่งของประเทืองงับ\n"
-            "─────────────\n"
-            "word  —  คำศัพท์สุ่ม\n"
-            "econ  —  คำศัพท์เศรษฐศาสตร์\n"
-            "work  —  คำศัพท์ทำงาน\n"
-            "นับ    —  ดูสถิติของคุณ\n"
-            "─────────────\n"
-            "⏰  ส่งคำศัพท์ทุกเช้า 7:00 น. งับ\n"
-            "🌙  ทวงให้ทวนศัพท์ทุก 3 ทุ่มงับ"
-        )
-
-    else:
-        # auto 30% / Gemini คุยเล่น 70%
-        use_gemini = random.choices(
-            [True, False],
-            weights=[70, 30]
-        )[0]
-        if use_gemini:
-            reply = get_chat_reply(text)
-        else:
-            reply = random.choice(SLEEPING_REPLIES)
-
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
-
-@app.get("/")
-def root():
-    return {"status": "running"}
+        _, count = get_user_data
