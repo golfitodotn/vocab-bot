@@ -4,6 +4,10 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from apscheduler.schedulers.background import BackgroundScheduler
 import anthropic, os, random, gspread
 from google.oauth2.service_account import Credentials
+import google.generativeai as genai
+
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+gemini = genai.GenerativeModel("gemini-2.5-flash")
 
 app = FastAPI()
 
@@ -164,14 +168,22 @@ def get_chat_reply(text, uid):
         )
 
     try:
-        response = claude.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=100,
-            messages=[{"role": "user", "content": f"{persona}\nตอบข้อความนี้เป็นภาษาไทย: {text}"}]
+        # ใช้ Gemini สำหรับคุยเล่น — ฟรี
+        response = gemini.generate_content(
+            f"{persona}\nตอบข้อความนี้เป็นภาษาไทย: {text}"
         )
-        return response.content[0].text.strip()
+        return response.text.strip()
     except:
-        return random.choice(SLEEPING_REPLIES)
+        # ถ้า Gemini error → fallback Claude
+        try:
+            response = claude.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=100,
+                messages=[{"role": "user", "content": f"{persona}\nตอบข้อความนี้เป็นภาษาไทย: {text}"}]
+            )
+            return response.content[0].text.strip()
+        except:
+            return random.choice(SLEEPING_REPLIES)
 
 def format_vocab(raw, user_id):
     if "หมดคำจะพูด" in raw:
