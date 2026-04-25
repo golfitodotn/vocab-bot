@@ -22,29 +22,27 @@ def is_mentioning_owner(text):
 
 # ===== GOOGLE SHEETS — cache เพื่อความเร็ว =====
 _sheet_cache = None
+_data_cache = {}  # เก็บข้อมูล user ไว้ใน memory
 
 def get_sheet():
     global _sheet_cache
     if _sheet_cache is not None:
         return _sheet_cache
-    creds = Credentials.from_service_account_info(
-        {
-            "type": "service_account",
-            "private_key": os.environ["GOOGLE_PRIVATE_KEY"].replace("\\n", "\n"),
-            "client_email": os.environ["GOOGLE_CLIENT_EMAIL"],
-            "token_uri": "https://oauth2.googleapis.com/token",
-        },
-        scopes=["https://www.googleapis.com/auth/spreadsheets"]
-    )
+    creds = Credentials.from_service_account_info(...)
     client = gspread.authorize(creds)
     _sheet_cache = client.open_by_key(os.environ["GOOGLE_SHEET_ID"]).sheet1
     return _sheet_cache
 
 def get_user_data(user_id):
+    # ถ้ามีใน cache แล้วใช้เลย ไม่ query Sheets
+    if user_id in _data_cache:
+        words = _data_cache[user_id]
+        return words, len(words)
     try:
         records = get_sheet().get_all_records()
         user_records = [r for r in records if str(r["user_id"]) == str(user_id)]
         words = [r["word"].lower() for r in user_records]
+        _data_cache[user_id] = words  # เก็บไว้ใน cache
         return words, len(words)
     except:
         return [], 0
@@ -52,6 +50,9 @@ def get_user_data(user_id):
 def save_word(word, user_id):
     try:
         get_sheet().append_row([word, user_id])
+        # อัปเดต cache ด้วย ไม่ต้อง query ใหม่
+        if user_id in _data_cache:
+            _data_cache[user_id].append(word.lower())
     except:
         pass
 
