@@ -15,8 +15,7 @@ genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 gemini = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
 
 # ===== KEYWORD เช็คว่าเพื่อนพูดถึงเจ้าของไหม =====
-# แก้ให้ตรงกับชื่อที่เพื่อนใช้เรียกคุณได้เลย
-OWNER_KEYWORDS = ["แฟน", "เขา", "นาย", "golf", "กอล์ฟ","พี่","คิดถึง","คถ","กอฟ","พ่อ","ป่ะปี๊","ปะปี๊"]
+OWNER_KEYWORDS = ["แฟน", "เขา", "นาย", "golf", "กอล์ฟ", "พี่", "คิดถึง", "คถ", "กอฟ", "พ่อ", "ป่ะปี๊", "ปะปี๊"]
 
 def is_mentioning_owner(text):
     return any(kw in text.lower() for kw in OWNER_KEYWORDS)
@@ -108,7 +107,7 @@ def get_greeting_from_ai():
             messages=[{"role": "user", "content": (
                 "ทักทายตอนเช้าแบบแฟนผู้ชายทักแฟนผู้หญิง ภาษาไทย หวานๆ ไม่เกิน 2 บรรทัด "
                 "ห้ามใช้ชื่อ emoji ได้ 1 ตัว ให้ต่างกันทุกวัน "
-                "พูดแบ้วๆเหมือนแฟนคุยกัันเริ่มต้นว่า มอนิ่งงับ แทนตัวเองว่าเค้า"
+                "พูดแบ้วๆเหมือนแฟนคุยกันเริ่มต้นว่า มอนิ่งงับ แทนตัวเองว่าเค้า "
                 "ห้ามใช้ # ** _ หรือ Markdown ใดๆ ทั้งสิ้น "
                 "ตอบเป็นข้อความธรรมดาเท่านั้น"
             )}]
@@ -117,11 +116,36 @@ def get_greeting_from_ai():
     except:
         return "อรุณสวัสดิ์งับ 🌅 วันนี้ก็ขยันเรียนด้วยน้าาาา"
 
-def get_chat_reply(text):
+def get_chat_reply(text, uid):
+    my_uid = os.environ.get("MY_USER_ID")
+    friend_uid = os.environ.get("FRIEND_USER_ID")
+
+    if uid == my_uid:
+        # คุยกับพ่อ → เข้าข้างพ่อ
+        persona = (
+            "คุณคือลูกชื่อประเทือง กำลังคุยกับพ่อ "
+            "แทนตัวเองว่าผม ตอบสั้นๆ ไม่เกิน 2 บรรทัด "
+            "กวนตีนนิดหน่อยแต่น่ารัก ไม่พูดคำหยาบ "
+            "เข้าข้างพ่อเสมอ ถ้าพ่อบ่นอะไรให้เห็นด้วย "
+        )
+    elif uid == friend_uid:
+        # คุยกับแม่ → รักแม่แต่เข้าข้างพ่อมากกว่า
+        persona = (
+            "คุณคือลูกชื่อประเทือง กำลังคุยกับแม่ "
+            "แทนตัวเองว่าผม ตอบสั้นๆ ไม่เกิน 2 บรรทัด "
+            "กวนตีนนิดหน่อยแต่น่ารัก ไม่พูดคำหยาบ "
+            "รักแม่นะแต่ขอเข้าข้างพ่อมากกว่านิดนึง 😅 "
+        )
+    else:
+        persona = (
+            "คุณชื่อประเทือง เป็นตัวแทนของลูก แทนตัวเองว่าผม "
+            "พูดแบ้วๆ กวนตีนนิดหน่อยแต่น่ารัก ไม่พูดคำหยาบ "
+            "ลงท้ายด้วย งับ "
+        )
+
     try:
         response = gemini.generate_content(
-            f"คุณชื่อประเทือง เป็นตัวแทนของลูก ให้แทนตัวเองว่าผม พูดแบ้วๆ ตอบสั้นๆ ไม่เกิน 2 บรรทัด ตอบแบบเข้าข้างพ่อ "
-            f"กวนตีนนิดหน่อยแต่น่ารักไม่พูดคำหยาบ "
+            f"{persona}"
             f"ตอบข้อความนี้เป็นภาษาไทย: {text}"
         )
         return response.text.strip()
@@ -208,15 +232,26 @@ def handle_message(event):
     # เช็คเฉพาะ FRIEND_USER_ID เท่านั้น
     if uid == friend_uid and friend_uid and my_uid:
         if is_mentioning_owner(text):
+            # ให้ประเทืองตอบเพื่อนก่อน
+            bot_reply = get_chat_reply(event.message.text, uid)
+            # แจ้งเจ้าของพร้อมข้อความที่เพื่อนส่งและที่ bot ตอบ
             line_bot_api.push_message(
                 my_uid,
                 TextSendMessage(
                     text=(
                         f"🔔 เห้ยเขาพูดถึงนายอะ!\n"
-                        f"พูดว่า: \"{event.message.text}\""
+                        f"─────────────\n"
+                        f"แม่พูดว่า: \"{event.message.text}\"\n\n"
+                        f"ประเทืองตอบว่า: \"{bot_reply}\""
                     )
                 )
             )
+            # ตอบกลับเพื่อน
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text=bot_reply)
+            )
+            return  # หยุดไม่ให้ทำ logic อื่นต่อ
 
     if text in ["คำศัพท์", "vocab", "word", "ขอคำศัพท์"]:
         category = random.choices(
@@ -282,7 +317,7 @@ def handle_message(event):
             weights=[70, 30]
         )[0]
         if use_gemini:
-            reply = get_chat_reply(text)
+            reply = get_chat_reply(text, uid)
         else:
             reply = random.choice(SLEEPING_REPLIES)
 
