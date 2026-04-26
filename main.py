@@ -1,19 +1,18 @@
 from fastapi import FastAPI, Request
 from linebot import LineBotApi, WebhookHandler
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageMessage
 from apscheduler.schedulers.background import BackgroundScheduler
 import anthropic, os, random, gspread
 from google.oauth2.service_account import Credentials
-import google.generativeai as genai
-
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-gemini = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
+from calorie import handle_image_calorie, handle_calorie_text
 
 app = FastAPI()
 
 line_bot_api = LineBotApi(os.environ["CHANNEL_ACCESS_TOKEN"])
 handler = WebhookHandler(os.environ["CHANNEL_SECRET"])
 claude = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+LINE_HEADERS = {"Authorization": f"Bearer {os.environ['CHANNEL_ACCESS_TOKEN']}"}
 
 # ===== KEYWORDS =====
 OWNER_KEYWORDS = ["แฟน", "เขา", "นาย", "golf", "กอล์ฟ", "พี่", "คิดถึง", "คถ", "กอฟ", "พ่อ", "ป่ะปี๊", "ปะปี๊"]
@@ -75,7 +74,7 @@ def get_vocab_history(user_id):
     except:
         return []
 
-# ===== ข้อความ auto สำรอง =====
+# ===== ข้อความสำรอง =====
 SLEEPING_REPLIES = [
     "ประเทืองหลับอยู่งับ 😴 พิมพ์ help ดูคำสั่งได้เลยงับ",
     "ไม่ว่างงับ ไปท่องศัพท์ก่อนเลยงับ 🙄",
@@ -172,10 +171,14 @@ def get_chat_reply(text, uid):
         )
 
     try:
-        response = gemini.generate_content(
-            f"{persona}\nตอบข้อความนี้เป็นภาษาไทย: {text}"
+        response = claude.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=120,
+            messages=[{"role": "user", "content": (
+                f"{persona}\nตอบข้อความนี้เป็นภาษาไทย: {text}"
+            )}]
         )
-        return response.text.strip()
+        return response.content[0].text.strip()
     except:
         return "ประเทืองเหนื่อย หมดคำจะพูด -.-"
 
@@ -211,10 +214,7 @@ def send_daily_vocab():
         return
     greeting = get_greeting_from_ai()
     for uid in uids:
-        category = random.choices(
-            ["workplace", "economics"],
-            weights=[80, 20]
-        )[0]
+        category = random.choices(["workplace", "economics"], weights=[80, 20])[0]
         vocab = format_vocab(get_vocab_from_ai(category, uid), uid)
         line_bot_api.push_message(uid, TextSendMessage(text=f"{greeting}\n\n{vocab}"))
 
@@ -250,6 +250,12 @@ async def webhook(request: Request):
     handler.handle(body.decode(), signature)
     return {"status": "ok"}
 
+# ── รับรูปภาพ → นับแคล ──────────────────────────────────────────────────────
+@handler.add(MessageEvent, message=ImageMessage)
+def on_image(event):
+    handle_image_calorie(event, line_bot_api, LINE_HEADERS)
+
+# ── รับข้อความ ───────────────────────────────────────────────────────────────
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     uid = event.source.user_id
@@ -298,6 +304,7 @@ def handle_message(event):
             )
             return
 
+    # ── คำสั่งทั่วไป ──────────────────────────────────────────────────────────
     if text in ["คำศัพท์", "vocab", "word", "ขอคำศัพท์"]:
         category = random.choices(["workplace", "economics"], weights=[80, 20])[0]
         reply = format_vocab(get_vocab_from_ai(category, uid), uid)
@@ -319,6 +326,9 @@ def handle_message(event):
                 lines.append(f"{i}. {word} — {meaning}")
             reply = "\n".join(lines)
 
+    elif text in ["แคลวันนี้", "แคล", "calorie"]:
+        reply = handle_calorie_text(uid)
+
     elif text == "testmorning":
         greeting = get_greeting_from_ai()
         category = random.choices(["workplace", "economics"], weights=[80, 20])[0]
@@ -335,6 +345,9 @@ def handle_message(event):
             f"📊 เรียนสะสมไปแล้ว {count} คำแล้วงับ\n"
             f"ขยันมากเยยยยย 💪"
         )
+
+    elif text == "testcalorie":
+        reply = handle_calorie_text(uid)
 
     elif text == "นับ":
         _, count = get_user_data(uid)
@@ -356,7 +369,10 @@ def handle_message(event):
             "econ      —  คำศัพท์เศรษฐศาสตร์\n"
             "work      —  คำศัพท์ทำงาน\n"
             "ประวัติ   —  ดูคำศัพท์ที่เรียนไปแล้ว\n"
-            "นับ       —  ดูสถิติของคุณ\n"
+            "นับ       —  ดูสถิติคำศัพท์\n"
+            "─────────────\n"
+            "📸 ส่งรูปอาหาร  —  นับแคลอรี่\n"
+            "แคลวันนี้       —  ดูสรุปแคลวันนี้\n"
             "─────────────\n"
             "⏰  ส่งคำศัพท์ทุกเช้า 7:00 น. งับ\n"
             "🌙  ทวงให้ทวนศัพท์ทุก 3 ทุ่มงับ"
