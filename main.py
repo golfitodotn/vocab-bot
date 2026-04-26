@@ -151,7 +151,7 @@ def get_chat_reply(text, uid):
             "คุณคือประเทือง เด็กผู้ชายอายุ 10 ขวบ กำลังคุยกับพ่อ "
             "แทนตัวเองว่าผม ตอบสั้นๆ ไม่เกิน 2 บรรทัด "
             "กวนพ่อนิดหน่อยแบบเด็กซน แต่น่ารัก ไม่พูดคำหยาบ "
-            "ถ้าพ่อบ่นอะไรให้เห็นด้วยแล้วแกล้งทำเป็นเอาใจพ่อ"
+            "ถ้าพ่อบ่นอะไรให้เห็นด้วยแล้วแกล้งทำเป็นเอาใจพ่อ "
             "ห้ามใช้ Markdown ตอบเป็นข้อความธรรมดา"
         )
     elif uid == friend_uid:
@@ -159,7 +159,7 @@ def get_chat_reply(text, uid):
             "คุณคือประเทือง เด็กผู้ชายอายุ 10 ขวบ กำลังคุยกับแม่ "
             "แทนตัวเองว่าผม ตอบสั้นๆ ไม่เกิน 2 บรรทัด "
             "กวนแม่นิดหน่อยแบบเด็กซน แต่น่ารัก ไม่พูดคำหยาบ "
-            "ถ้าถามถึงพ่อรักแม่นะแต่แอบเข้าข้างพ่อมากกว่า ทำเป็นไม่รู้เรื่อง"
+            "ถ้าถามถึงพ่อรักแม่นะแต่แอบเข้าข้างพ่อมากกว่า ทำเป็นไม่รู้เรื่อง "
             "ห้ามใช้ Markdown ตอบเป็นข้อความธรรมดา"
         )
     else:
@@ -249,12 +249,10 @@ async def webhook(request: Request):
     handler.handle(body.decode(), signature)
     return {"status": "ok"}
 
-# ── รับรูปภาพ → นับแคล ──────────────────────────────────────────────────────
 @handler.add(MessageEvent, message=ImageMessage)
 def on_image(event):
     handle_image_calorie(event, line_bot_api, LINE_HEADERS)
 
-# ── รับข้อความ ───────────────────────────────────────────────────────────────
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     uid = event.source.user_id
@@ -265,7 +263,6 @@ def handle_message(event):
     # เช็คเฉพาะ FRIEND_USER_ID เท่านั้น
     if uid == friend_uid and friend_uid and my_uid:
 
-        # เช็คอารมณ์ก่อน — priority สูงสุด
         if is_bad_mood(text):
             line_bot_api.push_message(
                 my_uid,
@@ -283,7 +280,6 @@ def handle_message(event):
             )
             return
 
-        # เช็คว่าพูดถึงพ่อไหม
         if is_mentioning_owner(text):
             bot_reply = get_chat_reply(event.message.text, uid)
             line_bot_api.push_message(
@@ -328,6 +324,23 @@ def handle_message(event):
     elif text in ["แคลวันนี้", "แคล", "calorie"]:
         reply = handle_calorie_text(uid)
 
+    # ฝากบอก — ส่งข้อความไปหา friend_uid
+    elif event.message.text.strip().startswith("ฝากบอก"):
+        msg_to_send = event.message.text.strip()[7:].strip()  # ตัด "ฝากบอก" ออก
+        if msg_to_send:
+            # เช็คว่าเป็นพ่อส่งหาแม่ หรือแม่ส่งหาพ่อ
+            target_uid = friend_uid if uid == my_uid else my_uid
+            if target_uid:
+                line_bot_api.push_message(
+                    target_uid,
+                    TextSendMessage(text=msg_to_send)
+                )
+                reply = "ส่งให้แล้วงับ 📨"
+            else:
+                reply = "ส่งไม่ได้งับ ไม่มี user ปลายทางงับ"
+        else:
+            reply = "พิมพ์ข้อความต่อจาก 'ฝากบอก' ด้วยนะงับ\nเช่น 'ฝากบอก รักนะ' งับ"
+
     elif text == "testmorning":
         greeting = get_greeting_from_ai()
         category = random.choices(["workplace", "economics"], weights=[80, 20])[0]
@@ -369,6 +382,7 @@ def handle_message(event):
             "work      —  คำศัพท์ทำงาน\n"
             "ประวัติ   —  ดูคำศัพท์ที่เรียนไปแล้ว\n"
             "นับ       —  ดูสถิติคำศัพท์\n"
+            "ฝากบอก   —  ส่งข้อความหาอีกฝ่าย\n"
             "─────────────\n"
             "📸 ส่งรูปอาหาร  —  นับแคลอรี่\n"
             "แคลวันนี้       —  ดูสรุปแคลวันนี้\n"
