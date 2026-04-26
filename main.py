@@ -326,20 +326,21 @@ def handle_message(event):
 
     # ฝากบอก — ส่งข้อความไปหา friend_uid
     elif event.message.text.strip().startswith("ฝากบอก"):
-        msg_to_send = event.message.text.strip()[7:].strip()  # ตัด "ฝากบอก" ออก
-        if msg_to_send:
-            # เช็คว่าเป็นพ่อส่งหาแม่ หรือแม่ส่งหาพ่อ
-            target_uid = friend_uid if uid == my_uid else my_uid
-            if target_uid:
-                line_bot_api.push_message(
-                    target_uid,
-                    TextSendMessage(text=msg_to_send)
-                )
-                reply = "ส่งให้แล้วงับ 📨"
-            else:
-                reply = "ส่งไม่ได้งับ ไม่มี user ปลายทางงับ"
+    msg_to_send = event.message.text.strip()[7:].strip()
+    if msg_to_send:
+        target_uid = friend_uid if uid == my_uid else my_uid
+        if target_uid:
+            # เช็คว่าใครส่ง
+            prefix = "ปะปี๊ฝากบอกว่า" if uid == my_uid else "มะมี๊ฝากบอกว่า"
+            line_bot_api.push_message(
+                target_uid,
+                TextSendMessage(text=f"{prefix} {msg_to_send}")
+            )
+            reply = "ส่งให้แล้วงับ 📨"
         else:
-            reply = "พิมพ์ข้อความต่อจาก 'ฝากบอก' ด้วยนะงับ\nเช่น 'ฝากบอก รักนะ' งับ"
+            reply = "ส่งไม่ได้งับ ไม่มี user ปลายทางงับ"
+    else:
+        reply = "พิมพ์ข้อความต่อจาก 'ฝากบอก' ด้วยนะงับ\nเช่น 'ฝากบอก รักนะ' งับ"
 
     elif text == "testmorning":
         greeting = get_greeting_from_ai()
