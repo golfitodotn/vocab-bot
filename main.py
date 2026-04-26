@@ -330,7 +330,7 @@ def handle_message(event):
         if msg_to_send:
             target_uid = friend_uid if uid == my_uid else my_uid
             if target_uid:
-                prefix = "ปะปี๊ฝากบอกว่า" if uid == my_uid else "มะมี๊ฝากบอกว่า"
+                prefix = "คุงแม่ปะปี๊ฝากบอกว่า" if uid == my_uid else "คุงพ่อมะมี๊ฝากบอกว่า"
                 line_bot_api.push_message(
                     target_uid,
                     TextSendMessage(text=f"{prefix} {msg_to_send}")
