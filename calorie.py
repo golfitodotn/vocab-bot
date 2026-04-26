@@ -175,7 +175,7 @@ def analyze_food_image(image_bytes: bytes, content_type: str = "image/jpeg") -> 
 
     try:
         response = claude.messages.create(
-            model="claude-haiku-4-5",
+            model="claude-sonnet-4-6",
             max_tokens=250,
             messages=[{
                 "role": "user",
